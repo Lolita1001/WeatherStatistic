@@ -1,8 +1,9 @@
+# -*- coding: utf-8 -*-
 
 
 class Table:
-    def __init__(self, db_cursor, table_name: str):
-        self._db_cursor = db_cursor
+    def __init__(self, cursor, table_name: str):
+        self._cursor = cursor
         self._table_name = table_name
         self._get_structure_of_table()
         #
@@ -36,11 +37,11 @@ class Table:
         - read = False -- определяет запрос на запись.
 
         """
-        self._db_cursor.execute(request)
+        self._cursor.execute(request)
         if read:
-            return self._db_cursor.fetchall()
+            return self._cursor.fetchall()
         else:
-            self._db_cursor.connection.commit()
+            self._cursor.connection.commit()
             return True
 
     def select(self, specific: str=None, condition: str=None, user_request: str=None, multi_result: bool=False):
