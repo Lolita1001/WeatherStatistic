@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 
+import datetime
+
 
 class Table:
+    """Класс таблица. Позволяет взаимодействовать с таблицей SQL"""
     def __init__(self, cursor, table_name: str):
         self._cursor = cursor
         self._table_name = table_name
@@ -90,6 +93,18 @@ class Table:
         else:
             return None  # если данных не получили, выводим None
 
+    @staticmethod
+    def _type_to_sql_injection(variable): # TODO добавить с плавующей точкой. Незабыть обновить тест
+        """В зависимости от типа переменной форматирует для SQL иньекции"""
+        if type(variable) is int or bool:
+            return '%s' % variable
+        elif type(variable) is str:
+            return "\'%s\'" % variable
+        elif type(variable) is datetime.datetime:
+            return '%s' % variable.strftime("TIMESTAMP\'%Y-%m-%d %H:%M:%S\'")
+        elif type(variable) is datetime.date:
+            return '%s' % variable.strftime("DATE\'%Y-%m-%d\'")
+
     def create(self, *name_columns, user_request: str=None):
         """Метод для создания таблицы. Таблица может быть создана только в случае если она не была создана ранее
 
@@ -127,9 +142,40 @@ class Table:
 
         Шаблон по умолчанию:
 
-        ALTER TABLE {self._table_name} {action}"
+        ALTER TABLE {self._table_name} {action}
 
         """
-
         request = f"ALTER TABLE {self._table_name} {action}" if user_request is None else user_request
+        self._executor(request=request, read=False)
+
+    def insert(self, *args, name_column: str=None, user_request: str=None):
+        """Меток для внесения значений в таблицу
+
+        Аргументы:
+
+        - *args -- значения для внесения в таблицу (последовательно по колонкам);
+        - name_column -- название колонки для внесения в нее конкретного значения
+        - user_request -- определяет пользовательский запрос, шаблон не используется.
+
+        Шаблон по умолчанию:
+
+        INSERT INTO {self._table_name} ({name_column}) VALUES ({request})
+
+        """
+        request = ''
+        for seq_args, item_args in enumerate(args, start=1):
+            if type(item_args) is list:
+                for seq_list, item_list in enumerate(item_args, start=1):
+                    request += self._type_to_sql_injection(item_list)
+                    request += ', ' if seq_list != item_args.__len__() else ""
+            else:
+                request += self._type_to_sql_injection(item_args)
+                request += ', ' if seq_args != args.__len__() else ""
+
+        if user_request:
+            request = user_request
+        elif name_column is None:
+            request = f"INSERT INTO {self._table_name} VALUES ({request})"
+        else:
+            request = f"INSERT INTO {self._table_name} ({name_column}) VALUES ({request})"
         self._executor(request=request, read=False)

@@ -6,14 +6,14 @@ from weather_statistic import constants
 from weather_statistic import constants_private
 
 
-
 def heroku_detect(config_vars):
     if config_vars in os.environ:
         return True
     else:
         return False
 
-def create_connetion():
+
+def create_connetion_sql():
     if heroku_detect(constants.HEROKU_RUN):
         return psycopg2.connect(database=constants_private.DATABASE_HEROKU, user=constants_private.USER_HEROKU,
                                 password=constants_private.PASSWORD_HEROKU,
@@ -25,6 +25,5 @@ def create_connetion():
 
 
 if __name__ == '__main__':
-    connection = create_connetion()
-    cursor = connection.cursor()
-
+    connection_sql = create_connetion_sql()
+    cursor_sql = connection_sql.cursor()
