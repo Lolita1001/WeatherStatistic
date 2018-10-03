@@ -31,7 +31,7 @@ class Table:
         self._is_created = results is not None
         self._structure = results
 
-    def _executor(self, request, read: bool=True):
+    def _executor(self, request: str, read: bool=True):
         """Метод для выполнения запросов на чтение и запись.
 
         Аргументы:
@@ -94,15 +94,15 @@ class Table:
             return None  # если данных не получили, выводим None
 
     @staticmethod
-    def _type_to_sql_injection(variable): # TODO добавить с плавующей точкой. Незабыть обновить тест
+    def _type_to_sql_injection(variable) -> str:  # TODO добавить с плавующей точкой. Незабыть обновить тест
         """В зависимости от типа переменной форматирует для SQL иньекции"""
-        if type(variable) is int or bool:
+        if isinstance(variable, (int, bool)):
             return '%s' % variable
-        elif type(variable) is str:
+        elif isinstance(variable, str):
             return "\'%s\'" % variable
-        elif type(variable) is datetime.datetime:
+        elif isinstance(variable, datetime.datetime):
             return '%s' % variable.strftime("TIMESTAMP\'%Y-%m-%d %H:%M:%S\'")
-        elif type(variable) is datetime.date:
+        elif isinstance(variable, datetime.date):
             return '%s' % variable.strftime("DATE\'%Y-%m-%d\'")
 
     def create(self, *name_columns, user_request: str=None):
@@ -148,34 +148,43 @@ class Table:
         request = f"ALTER TABLE {self._table_name} {action}" if user_request is None else user_request
         self._executor(request=request, read=False)
 
-    def insert(self, *args, name_column: str=None, user_request: str=None):
+    def insert(self, *args, user_request: str=None, **kwargs):  # TODO сделать проверку на наличии колонки из _structure
         """Меток для внесения значений в таблицу
 
         Аргументы:
 
         - *args -- значения для внесения в таблицу (последовательно по колонкам);
-        - name_column -- название колонки для внесения в нее конкретного значения
+        - **kwargs -- наименование колонки и значение для внесения в таблицу
         - user_request -- определяет пользовательский запрос, шаблон не используется.
 
         Шаблон по умолчанию:
-
-        INSERT INTO {self._table_name} ({name_column}) VALUES ({request})
+        names_columns и value_columns полачаются из **kwags
+        INSERT INTO {self._table_name} ({names_columns}) VALUES ({value_columns})
 
         """
         request = ''
-        for seq_args, item_args in enumerate(args, start=1):
-            if type(item_args) is list:
-                for seq_list, item_list in enumerate(item_args, start=1):
-                    request += self._type_to_sql_injection(item_list)
-                    request += ', ' if seq_list != item_args.__len__() else ""
-            else:
-                request += self._type_to_sql_injection(item_args)
-                request += ', ' if seq_args != args.__len__() else ""
-
         if user_request:
             request = user_request
-        elif name_column is None:
+        elif kwargs:
+            names_columns = ''
+            value_columns = ''
+            for item_kwargs, key_kwargs in enumerate(kwargs.keys(), start=1):
+                names_columns += key_kwargs
+                value_columns += self._type_to_sql_injection(kwargs[key_kwargs])
+                if item_kwargs != kwargs.__len__():
+                    names_columns += ', '
+                    value_columns += ', '
+            request = f"INSERT INTO {self._table_name} ({names_columns}) VALUES ({value_columns})"
+        elif args:
+            for seq_args, item_args in enumerate(args, start=1):
+                if type(item_args) is list:
+                    for seq_list, item_list in enumerate(item_args, start=1):
+                        request += self._type_to_sql_injection(item_list)
+                        request += ', ' if seq_list != item_args.__len__() else ""
+                else:
+                    request += self._type_to_sql_injection(item_args)
+                    request += ', ' if seq_args != args.__len__() else ""
             request = f"INSERT INTO {self._table_name} VALUES ({request})"
         else:
-            request = f"INSERT INTO {self._table_name} ({name_column}) VALUES ({request})"
+            return
         self._executor(request=request, read=False)
