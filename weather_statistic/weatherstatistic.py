@@ -2,8 +2,10 @@
 
 import os
 import psycopg2
-from weather_statistic import constants
-from weather_statistic import constants_private
+from weather_statistic.constants import (URLS_YANDEX,
+                                         HEROKU_RUN)
+from weather_statistic.constants_private import *
+from weather_statistic.html_data import YxWeather
 
 
 def heroku_detect(config_vars):
@@ -13,17 +15,18 @@ def heroku_detect(config_vars):
         return False
 
 
-def create_connetion_sql():
-    if heroku_detect(constants.HEROKU_RUN):
-        return psycopg2.connect(database=constants_private.DATABASE_HEROKU, user=constants_private.USER_HEROKU,
-                                password=constants_private.PASSWORD_HEROKU,
-                                host=constants_private.HOST_HEROKU, port=constants_private.PORT, sslmode='require')
+def create_connection_sql():  # TODO Добавить обработку исключений
+    if heroku_detect(HEROKU_RUN):
+        return psycopg2.connect(database=DATABASE_HEROKU, user=USER_HEROKU,
+                                password=PASSWORD_HEROKU,
+                                host=HOST_HEROKU, port=PORT, sslmode='require')
     else:
-        return psycopg2.connect(database=constants_private.DATABSE_TEST, user=constants_private.USER_LOCAL,
-                                password=constants_private.PASSWORD_LOCAL, host=constants_private.HOST_LOCAL,
-                                port=constants_private.PORT)
+        return psycopg2.connect(database=DATABSE_TEST, user=USER_LOCAL,
+                                password=PASSWORD_LOCAL, host=HOST_LOCAL,
+                                port=PORT)
 
 
 if __name__ == '__main__':
-    connection_sql = create_connetion_sql()
+    yx = YxWeather(URLS_YANDEX)
+    connection_sql = create_connection_sql()
     cursor_sql = connection_sql.cursor()
