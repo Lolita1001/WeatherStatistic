@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import datetime
-
+from weather_statistic.recorder_error import recorder_error
 
 class Table:  # TODO Добавить обработку исключений
     """Класс таблица. Позволяет взаимодействовать с таблицей SQL"""
