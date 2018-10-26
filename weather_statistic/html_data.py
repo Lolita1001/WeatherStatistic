@@ -4,26 +4,17 @@ import time
 import requests
 import re
 import datetime
+import pickle
 from abc import abstractmethod
 from abc import ABC
 from bs4 import BeautifulSoup
 from weather_statistic.recorder_error import recorder_error
-from weather_statistic.constants import (YX_CURR_FEEL,
-                                         YX_CURR_HUMIDITY,
-                                         YX_CURR_CONDITION,
-                                         YX_CURR_TEMP,
-                                         YX_CURR_PRESSURE,
-                                         YX_CURR_WIND,
-                                         YX_10DAYS_TEMP,
-                                         YX_10DAYS_FEEL,
-                                         YX_10DAYS_CONDITION,
-                                         YX_10DAYS_HUMIDITY,
-                                         YX_10DAYS_PRESSURE,
-                                         YX_10DAYS_WIND,
-                                         URLS_YANDEX)
+from weather_statistic.constants import (YX_CURR,
+                                         YX_CALENDAR,
+                                         YX_TEMPLATE,
+                                         HEADERS_REQ)
 
 
-@recorder_error
 class Page:
     """Класс описывающий страницу.
 
@@ -31,15 +22,34 @@ class Page:
 
     :param timeout: таймаут для запроса на страницу.
 
+    :param debug_read_file: файл для чтения из файла и замены результата request
+
+    :param debug_write_file: файл для записи в файл результата request
+
+    :param find_template: шаблон для первичного поиска в полученном HTML коде
+
     """
-    def __init__(self, url, timeout=20):
+    def __init__(self, url, timeout=20, debug_read_file=None, debug_write_file=None, find_template=None):
         self._url = url
         self._timeout = timeout
-        self.html_data, self.html_status_code, self.html_ok = self.get_html(self._url, self._timeout)
-        self.page_bs4 = BeautifulSoup(self.html_data, 'lxml') if self.html_ok else None
+        if debug_read_file:
+            with open(debug_read_file, 'rb') as f:
+                data = pickle.load(f)
+                self.html_data, self.html_status_code, self.html_ok = data['html_data'], data['html_status_code'], \
+                                                                      data['html_ok']
+        else:
+            self.html_data, self.html_status_code, self.html_ok = self.get_html(self._url, self._timeout)
+        if debug_write_file:
+            with open(debug_write_file, 'wb') as f:
+                data = {'html_data': self.html_data, 'html_status_code': self.html_status_code, 'html_ok': self.html_ok}
+                pickle.dump(data, f)
+        if find_template is None:
+            self.page_bs4 = BeautifulSoup(self.html_data, 'lxml') if self.html_ok else None
+        else:
+            self.page_bs4 = BeautifulSoup(self.html_data, 'lxml'). \
+                find(find_template[0], **find_template[1]) if self.html_ok else None
 
     @staticmethod
-    @recorder_error
     def get_html(url, timeout):
         """Метод для получения html кода страницы.
 
@@ -49,7 +59,7 @@ class Page:
 
         """
         try:
-            data = requests.get(url, timeout=timeout)
+            data = requests.get(url, headers=HEADERS_REQ, timeout=timeout)
             return data.text, data.status_code, data.ok
         except requests.ConnectionError as err:
             return None, 1404, False
@@ -63,17 +73,16 @@ class SearcherInPage(ABC):
     :param setup_pattern: Путь до желаемого параметра
 
     """
-    @recorder_error
+
     def __init__(self, page_bs4: BeautifulSoup, setup_pattern):
         self.setup_pattern = self.pattern_format(setup_pattern)
         self.weather_data_bs4 = self.data_extractor(page_bs4, self.setup_pattern)
         self.weather_data = self._spreader(self.weather_data_bs4)
 
     @staticmethod
-    @recorder_error
     def pattern_format(setup_patterns):
         """Метод для форматирования пути в требуемый формат.
-        Метод раскладываем строку пути в список и формирует подсписки в виде словарей, где
+        Метод раскладывает строку пути в список и формирует подсписки в виде словарей, где
         ключ и значения это именованные аргументы для BS4
 
         Пример:
@@ -102,7 +111,6 @@ class SearcherInPage(ABC):
             out_pattern.append(out_pattern_path)
         return out_pattern
 
-    @recorder_error
     def data_extractor(self, page_bs4, setup_pattern):
         """Метод для извлечения данных из page_bs4"""
         data = [[page_bs4]]
@@ -119,7 +127,6 @@ class SearcherInPage(ABC):
         else:
             return self._data_splitter(data[0], [setup_pattern[1]])
 
-    @recorder_error
     def _data_splitter(self, data_bs4, setup_pattern):
         """Метод для итерированию по нескольким результатам"""
         data = list()
@@ -135,11 +142,9 @@ class SearcherInPage(ABC):
 
 
 class YxWeatherData(SearcherInPage):
-    @recorder_error
     def __init__(self, page_bs4: BeautifulSoup, setup_pattern):
         super(YxWeatherData, self).__init__(page_bs4, setup_pattern)
 
-    @recorder_error
     def _spreader(self, weather_data_bs4):
         def info_text(data):
             """Метод из данных BS4 плучает текстовые значения"""
@@ -154,7 +159,6 @@ class YxWeatherData(SearcherInPage):
             else:
                 return data.text
 
-        @recorder_error
         def list_of_one_element_expand(data):
             """Метод для свертывания избыточных списков (список содержищий только одно значени)"""
             run = True
@@ -176,9 +180,9 @@ class YxWeatherData(SearcherInPage):
                     out = data
             return out
 
-        @recorder_error
         def format_from_garbage(data):
             """Метод для отсечеия лишних символов - точки, градусы, проценты и т.д"""
+            pattern = r"[а-яА-Я]{4,}[ ]?[а-яА-Я]{4,}|[а-яА-Я]{4,}|[+-]?[0-9]*[,]?[0-9]+"
             out = list()
             if isinstance(data, (list, tuple)):
                 for data_i in data:
@@ -186,10 +190,11 @@ class YxWeatherData(SearcherInPage):
                         out.append(format_from_garbage(data_i) if len(data_i) > 1
                                    else format_from_garbage(data_i[0]))
                     else:
-                        out.append(re.findall(r"[а-яА-Я\s]+|-\d{1,3}|\d+", data_i))
+                        out.append(re.findall(pattern, data_i))
                 return out
             else:
-                return re.findall(r"[а-яА-Я\s]+|-\d{1,3}|\d+", data)
+                return re.findall(pattern, data)
+
         return list_of_one_element_expand(format_from_garbage(info_text(weather_data_bs4)))
 
 
@@ -208,30 +213,50 @@ class YxWeather:
                             'pressure' : None}
 
     """
-    @recorder_error
+
     def __init__(self, urls: dict):
         self.urls = urls
         self.current, self.calendar = self._get_data(self.urls)
 
-    @recorder_error
     def _get_data(self, urls):
-        self.page_current = Page(urls['current'])
-        self.page_calendar = Page(urls['calendar'])
+        self.page_current = Page(urls['current'], debug_read_file='request_current.txt',
+                                 find_template=YX_TEMPLATE['current'])
+        # time.sleep(3)
+        self.page_calendar = Page(urls['calendar'], debug_read_file='request_calendar.txt',
+                                  find_template=YX_TEMPLATE['calendar'])
         self.date_time_update = datetime.datetime.today().utcnow()
+        '''
         struct_current, struct_calendar = dict(), dict()
         struct_current['temperature'] = YxWeatherData(self.page_current.page_bs4, YX_CURR_TEMP).weather_data
         struct_current['feel'] = YxWeatherData(self.page_current.page_bs4, YX_CURR_FEEL).weather_data
         struct_current['humidity'] = YxWeatherData(self.page_current.page_bs4, YX_CURR_HUMIDITY).weather_data
         struct_current['condition'] = YxWeatherData(self.page_current.page_bs4, YX_CURR_CONDITION).weather_data
-        struct_current['pressure'] = YxWeatherData(self.page_current.page_bs4, YX_CURR_PRESSURE).weather_data
+        struct_current['pressure'] = YxWeatherData(self.page_current.page_bs4, YX_CURR_PRESSURE).weather_data[0]
         struct_calendar['temperature'] = YxWeatherData(self.page_calendar.page_bs4, YX_10DAYS_TEMP).weather_data
         struct_calendar['feel'] = YxWeatherData(self.page_calendar.page_bs4, YX_10DAYS_FEEL).weather_data
         struct_calendar['humidity'] = YxWeatherData(self.page_calendar.page_bs4, YX_10DAYS_HUMIDITY).weather_data
         struct_calendar['condition'] = YxWeatherData(self.page_calendar.page_bs4, YX_10DAYS_CONDITION).weather_data
-        struct_calendar['pressure'] = YxWeatherData(self.page_calendar.page_bs4, YX_10DAYS_PRESSURE).weather_data
+        struct_calendar['pressure'] = YxWeatherData(self.page_calendar.page_bs4, YX_10DAYS_PRESSURE).weather_data'''
+        struct_current = {key: YxWeatherData(self.page_current.page_bs4, YX_CURR[key]).weather_data for key in YX_CURR}
+        struct_calendar = {key: YxWeatherData(self.page_calendar.page_bs4, YX_CALENDAR[key]).weather_data for key in
+                           YX_CALENDAR}
+        # FIXME ---BEGIN--- Поиск решения в выборе оптимальной структуры данных для погоды
+        test_out = list(zip(*struct_calendar.values()))
+        weak = dict()
+        for num, day in enumerate(test_out):
+            mor, day, eve, night = zip(*day)
+
+            def set_data(data):
+                out = WeatherStructure()
+                out.set_weather(data[0], data[1], data[2], data[3], data[4], data[5])
+                return out
+
+            # testlist = list(map(set_data, [mor, day, eve, night]))
+            testlist = dict(zip(['morning', 'day', 'evening', 'night'], (map(set_data, [mor, day, eve, night]))))
+            weak[(datetime.datetime.today().now() + datetime.timedelta(days=num)).strftime('%d%m%y')] = testlist
+        # FIXME ---END---
         return struct_current, struct_calendar
 
-    @recorder_error
     def update_and_get_different(self):
         """Метод для обновления и получаения изменений в текущей/прогнозе погоды
 
@@ -255,7 +280,7 @@ class DictDiffer(object):
     (3) keys same in both but changed values
     (4) keys same in both and unchanged values
     """
-    @recorder_error
+
     def __init__(self, current_dict, past_dict):
         self.current_dict, self.past_dict = current_dict, past_dict
         self.set_current, self.set_past = set(current_dict.keys()), set(past_dict.keys())
@@ -272,3 +297,26 @@ class DictDiffer(object):
 
     def unchanged(self):
         return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
+
+
+class WeatherStructure:
+    def __init__(self):
+        self.timestamp = None
+        self.weather = dict()
+        self.weather['temperature'] = None
+        self.weather['feel'] = None
+        self.weather['condition'] = None
+        self.weather['humidity'] = None
+        self.weather['pressure'] = None
+        self.weather['wind'] = None
+
+    def set_weather(self, temperature, feel, condition, humidity, pressure, wind, day_offset=0):
+        if not isinstance(temperature, list):
+            temperature = [temperature, temperature]
+        self.timestamp = datetime.datetime.today().now() + datetime.timedelta(days=day_offset)
+        self.weather['temperature'] = temperature
+        self.weather['feel'] = feel
+        self.weather['condition'] = condition
+        self.weather['humidity'] = humidity
+        self.weather['pressure'] = pressure
+        self.weather['wind'] = wind

@@ -3,6 +3,7 @@
 import datetime
 from weather_statistic.recorder_error import recorder_error
 
+
 class Table:  # TODO Добавить обработку исключений
     """Класс таблица. Позволяет взаимодействовать с таблицей SQL"""
     def __init__(self, cursor, table_name: str):
@@ -154,7 +155,7 @@ class Table:  # TODO Добавить обработку исключений
 
         Шаблон по умолчанию:
 
-        names_columns и value_columns полачаются из **kwags
+        names_columns и value_columns извлекаются из **kwags
 
         INSERT INTO {self._table_name} ({names_columns}) VALUES ({value_columns})
 

@@ -24,7 +24,7 @@ def recorder_error(func):
             asdf = fault.f_locals.setdefault('self', None)
             local_variable = {key: fault.f_locals[key] for key in [key for key in fault.f_locals.keys()]}
             if 'self' in fault.f_locals.keys():
-                local_variable['self'] = fault.f_locals['self'].__dict__
+                local_variable['self'] = fault.f_locals['self'].__dict__ if fault.f_locals['self'] is not None else None
             blobal_variable = fault.f_globals
             with open('log.txt', 'a', encoding='utf-8') as file_handler:
                 file_handler.write(f'{timestamp}\n')
